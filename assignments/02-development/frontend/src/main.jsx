@@ -141,12 +141,14 @@ function TaskModal({ task, onClose, onSave }) {
   );
 }
 
-function TaskCard({ task, onEdit, onDelete, onArchive, onDragStart }) {
+function TaskCard({ task, onEdit, onDelete, onArchive, onDragStart, actionInProgress }) {
   const dueState = getDueState(task);
+  const stopButtonDrag = (event) => event.stopPropagation();
+
   return (
     <article
       className={`task-card priority-${task.priority.toLowerCase()} ${dueState}`}
-      draggable
+      draggable={!actionInProgress}
       onDragStart={(event) => onDragStart(event, task.id)}
     >
       <div className="card-topline">
@@ -162,16 +164,27 @@ function TaskCard({ task, onEdit, onDelete, onArchive, onDragStart }) {
       {dueState === "due-today" ? <strong className="due-label">Due today</strong> : null}
       {dueState === "overdue" ? <strong className="due-label overdue-label">Overdue</strong> : null}
       <div className="card-actions">
-        <button type="button" onClick={() => onEdit(task)}>
+        <button type="button" onPointerDown={stopButtonDrag} onClick={() => onEdit(task)}>
           Edit
         </button>
         {task.column === "done" ? (
-          <button type="button" onClick={() => onArchive(task.id)}>
-            Archive
+          <button
+            type="button"
+            disabled={actionInProgress}
+            onPointerDown={stopButtonDrag}
+            onClick={() => onArchive(task.id)}
+          >
+            {actionInProgress ? "Archiving..." : "Archive"}
           </button>
         ) : null}
-        <button type="button" className="danger-button" onClick={() => onDelete(task.id)}>
-          Delete
+        <button
+          type="button"
+          className="danger-button"
+          disabled={actionInProgress}
+          onPointerDown={stopButtonDrag}
+          onClick={() => onDelete(task.id)}
+        >
+          {actionInProgress ? "Deleting..." : "Delete"}
         </button>
       </div>
     </article>
@@ -184,6 +197,8 @@ function Board({ user, onLogout }) {
   const [modalTask, setModalTask] = useState(null);
   const [modalOpen, setModalOpen] = useState(false);
   const [draggedId, setDraggedId] = useState(null);
+  const [actionTaskId, setActionTaskId] = useState(null);
+  const [error, setError] = useState("");
 
   async function refresh() {
     const [board, nextSummary] = await Promise.all([api.getBoard(), api.getDashboardSummary()]);
@@ -208,6 +223,7 @@ function Board({ user, onLogout }) {
   }
 
   async function saveTask(task) {
+    setError("");
     if (task.id) {
       await api.updateTask(task.id, task);
     } else {
@@ -219,9 +235,24 @@ function Board({ user, onLogout }) {
 
   async function dropOnColumn(columnId) {
     if (!draggedId) return;
+    setError("");
     await api.moveTask(draggedId, columnId);
     setDraggedId(null);
     await refresh();
+  }
+
+  async function runTaskAction(id, action) {
+    setError("");
+    setDraggedId(null);
+    setActionTaskId(id);
+    try {
+      await action(id);
+      await refresh();
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setActionTaskId(null);
+    }
   }
 
   return (
@@ -260,6 +291,8 @@ function Board({ user, onLogout }) {
         </div>
       </section>
 
+      {error ? <p className="form-error board-error">{error}</p> : null}
+
       <section className="board" aria-label="Kanban board">
         {columns.map((column) => (
           <div
@@ -282,17 +315,20 @@ function Board({ user, onLogout }) {
                     setModalOpen(true);
                   }}
                   onDelete={async (id) => {
-                    await api.deleteTask(id);
-                    await refresh();
+                    await runTaskAction(id, api.deleteTask);
                   }}
                   onArchive={async (id) => {
-                    await api.archiveTask(id);
-                    await refresh();
+                    await runTaskAction(id, api.archiveTask);
                   }}
                   onDragStart={(event, id) => {
+                    if (actionTaskId) {
+                      event.preventDefault();
+                      return;
+                    }
                     event.dataTransfer.effectAllowed = "move";
                     setDraggedId(id);
                   }}
+                  actionInProgress={actionTaskId === task.id}
                 />
               ))}
             </div>
