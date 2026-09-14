@@ -1,5 +1,8 @@
 import pytest
 from fastapi.testclient import TestClient
+import os
+
+os.environ["DATABASE_URL"] = "sqlite:///:memory:"
 
 from app.auth import hash_password
 from app.main import app
