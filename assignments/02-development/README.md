@@ -11,7 +11,7 @@ The app has a React frontend and a FastAPI backend. The frontend runs in the bro
 
 ## Demo Video
 
-[Watch the FocusBoard demo](./app-demo.mp4)
+[Watch the FocusBoard demo](https://drive.google.com/file/d/1trRKQnrDYAUvLR9p5TR7NcAU_mjzmw4H/view)
 
 ## Tech Stack
 
