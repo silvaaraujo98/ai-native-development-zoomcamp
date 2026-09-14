@@ -10,7 +10,7 @@ client = TestClient(app)
 
 @pytest.fixture(autouse=True)
 def reset_store() -> None:
-    store.__init__()
+    store.reset()
 
 
 def auth_headers() -> dict[str, str]:

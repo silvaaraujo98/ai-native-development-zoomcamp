@@ -293,4 +293,194 @@ function createMockInterviewService(store = createLocalStorageStore()) {
   };
 }
 
-export { createMockInterviewService, createMemoryStore, initialState, makeElement, makeConnection };
+function createApiInterviewService({
+  baseUrl = globalThis.__API_BASE_URL__ || "http://127.0.0.1:8000/v1",
+  email = "interviewer@example.com",
+  password = "password123",
+  storage = globalThis.localStorage
+} = {}) {
+  const listeners = new Set();
+  const authKey = "sysdesign.interview.api.authToken";
+  const participantKey = "sysdesign.interview.api.participantTokens";
+  let authToken = storage?.getItem(authKey) || null;
+  let participantTokens = JSON.parse(storage?.getItem(participantKey) || "{}");
+  let componentDefaultsCache = clone(componentDefaults);
+
+  function saveParticipantTokens() {
+    storage?.setItem(participantKey, JSON.stringify(participantTokens));
+  }
+
+  function notify() {
+    listeners.forEach((listener) => listener({}));
+  }
+
+  async function init() {
+    try {
+      componentDefaultsCache = await request("/component-defaults", { auth: false });
+    } catch {
+      componentDefaultsCache = clone(componentDefaults);
+    }
+    return service;
+  }
+
+  async function ensureAuth() {
+    if (authToken) return authToken;
+    const result = await request("/auth/login", {
+      auth: false,
+      method: "POST",
+      body: { email, password }
+    });
+    authToken = result.accessToken;
+    storage?.setItem(authKey, authToken);
+    return authToken;
+  }
+
+  function tokenFor(sessionId) {
+    return authToken || participantTokens[sessionId] || null;
+  }
+
+  async function request(path, { method = "GET", body, auth = true, sessionId } = {}) {
+    const headers = { Accept: "application/json" };
+    if (body !== undefined) headers["Content-Type"] = "application/json";
+    const token = auth ? tokenFor(sessionId) || await ensureAuth() : null;
+    if (token) headers.Authorization = `Bearer ${token}`;
+
+    const response = await fetch(`${baseUrl}${path}`, {
+      method,
+      headers,
+      body: body === undefined ? undefined : JSON.stringify(body)
+    });
+
+    const text = await response.text();
+    const data = text ? JSON.parse(text) : null;
+    if (!response.ok) {
+      const message = data?.message || data?.detail || `Request failed with ${response.status}`;
+      throw new Error(message);
+    }
+    return data;
+  }
+
+  const service = {
+    get componentDefaults() {
+      return componentDefaultsCache;
+    },
+    init,
+    subscribe(listener) {
+      listeners.add(listener);
+      return () => listeners.delete(listener);
+    },
+    reset() {
+      storage?.removeItem(authKey);
+      storage?.removeItem(participantKey);
+      authToken = null;
+      participantTokens = {};
+      notify();
+    },
+    async listSessions() {
+      return request("/sessions");
+    },
+    async createSession(input) {
+      const session = await request("/sessions", { method: "POST", body: input });
+      notify();
+      return session;
+    },
+    async createCandidateLink(sessionId) {
+      const link = await request(`/sessions/${sessionId}/candidate-link`, { method: "POST", sessionId });
+      notify();
+      return link;
+    },
+    async revokeCandidateLink(sessionId) {
+      const link = await request(`/sessions/${sessionId}/candidate-link`, { method: "DELETE", sessionId });
+      notify();
+      return link;
+    },
+    async joinWithToken(token, displayName) {
+      const result = await request(`/join/${token}`, {
+        auth: false,
+        method: "POST",
+        body: { displayName }
+      });
+      participantTokens[result.session.id] = result.participantToken;
+      saveParticipantTokens();
+      notify();
+      return result;
+    },
+    async getSession(sessionId) {
+      return request(`/sessions/${sessionId}`, { sessionId });
+    },
+    async updateSession(sessionId, patch) {
+      const session = await request(`/sessions/${sessionId}`, { method: "PATCH", body: patch, sessionId });
+      notify();
+      return session;
+    },
+    async endSession(sessionId) {
+      const session = await request(`/sessions/${sessionId}/end`, { method: "POST", sessionId });
+      notify();
+      return session;
+    },
+    async duplicateSession(sessionId) {
+      const session = await request(`/sessions/${sessionId}/duplicate`, { method: "POST", sessionId });
+      notify();
+      return session;
+    },
+    async addElement(sessionId, type, x, y) {
+      const element = await request(`/sessions/${sessionId}/canvas/elements`, {
+        method: "POST",
+        body: { type, x, y },
+        sessionId
+      });
+      notify();
+      return element;
+    },
+    async updateElement(sessionId, elementId, patch) {
+      const element = await request(`/sessions/${sessionId}/canvas/elements/${elementId}`, {
+        method: "PATCH",
+        body: patch,
+        sessionId
+      });
+      notify();
+      return element;
+    },
+    async deleteElement(sessionId, elementId) {
+      const canvas = await request(`/sessions/${sessionId}/canvas/elements/${elementId}`, {
+        method: "DELETE",
+        sessionId
+      });
+      notify();
+      return canvas;
+    },
+    async addConnection(sessionId, from, to, label = "") {
+      const connection = await request(`/sessions/${sessionId}/canvas/connections`, {
+        method: "POST",
+        body: { from, to, label },
+        sessionId
+      });
+      notify();
+      return connection;
+    },
+    async addStroke(sessionId, stroke) {
+      const next = await request(`/sessions/${sessionId}/canvas/strokes`, {
+        method: "POST",
+        body: { color: stroke.color, width: stroke.width, points: stroke.points },
+        sessionId
+      });
+      notify();
+      return next;
+    },
+    async exportSessionJson(sessionId) {
+      const session = await request(`/sessions/${sessionId}/export.json`, { sessionId });
+      return JSON.stringify(session, null, 2);
+    }
+  };
+
+  return service;
+}
+
+export {
+  createApiInterviewService,
+  createMockInterviewService,
+  createMemoryStore,
+  initialState,
+  makeElement,
+  makeConnection
+};

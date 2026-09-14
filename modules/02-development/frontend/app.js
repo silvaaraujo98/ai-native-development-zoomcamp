@@ -1,6 +1,6 @@
-import { createMockInterviewService } from "./services.js";
+import { createApiInterviewService } from "./services.js";
 
-const service = createMockInterviewService();
+const service = createApiInterviewService();
 const app = document.querySelector("#app");
 
 let route = "dashboard";
@@ -54,7 +54,28 @@ function statusPill(state) {
 }
 
 async function render() {
-  const sessions = await service.listSessions();
+  let sessions = [];
+  try {
+    sessions = await service.listSessions();
+  } catch (error) {
+    app.innerHTML = `
+      <div class="shell">
+        <main class="main">
+          <section class="workspace">
+            <section class="panel" style="max-width: 720px">
+              <div class="panel-header"><h2>Backend unavailable</h2></div>
+              <div class="panel-body form">
+                <div class="notice">${escapeHtml(error.message)}</div>
+                <button class="primary" data-action="retry">Retry</button>
+              </div>
+            </section>
+          </section>
+        </main>
+      </div>
+    `;
+    app.querySelector("[data-action='retry']")?.addEventListener("click", render);
+    return;
+  }
   const active = sessions.find((session) => session.id === activeSessionId) || sessions[0];
   activeSessionId = active?.id || activeSessionId;
   app.innerHTML = `
@@ -68,7 +89,7 @@ async function render() {
           ${navButton("canvas", "Live canvas")}
           ${navButton("review", "Review")}
         </nav>
-        <div class="sidebar-card">Mock services are active. Sessions, links, participants, and canvas changes are saved in this browser.</div>
+        <div class="sidebar-card">Connected to the FastAPI backend. Demo auth is handled automatically for this local build.</div>
       </aside>
       <main class="main">
         ${topbar(active)}
@@ -138,11 +159,11 @@ function dashboardView(sessions) {
       <aside class="panel">
         <div class="panel-header"><h2>MVP readiness</h2></div>
         <div class="panel-body form">
-          ${metric("Collaboration", "Presence, cursors, mock fan-out")}
+          ${metric("Collaboration", "Presence, cursors, API persistence")}
           ${metric("Canvas", "Components, connectors, freehand")}
           ${metric("Security", "Revocable guest link model")}
-          ${metric("Recovery", "Browser persistence and reconnect states")}
-          <div class="notice">Use the mock service as the seam for a real API later. The UI does not call storage directly.</div>
+          ${metric("Recovery", "Backend state and reconnect states")}
+          <div class="notice">The UI is using the HTTP service client for sessions, links, participants, and canvas changes.</div>
         </div>
       </aside>
     </div>
@@ -500,4 +521,5 @@ service.subscribe(() => {
   if (route !== "canvas") return;
 });
 
+await service.init();
 render();
