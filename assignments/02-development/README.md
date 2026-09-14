@@ -9,6 +9,10 @@ FocusBoard is a full-stack personal Kanban app built for Homework 2 of the AI Na
 
 The app has a React frontend and a FastAPI backend. The frontend runs in the browser and talks to the backend API over HTTP.
 
+## Demo Video
+
+[Watch the FocusBoard demo](./app-demo.mp4)
+
 ## Tech Stack
 
 - Frontend: React, Vite, Node.js
