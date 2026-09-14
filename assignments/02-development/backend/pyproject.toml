@@ -1,0 +1,16 @@
+[project]
+name = "focusboard-backend"
+version = "0.1.0"
+description = "FastAPI backend for the FocusBoard homework"
+requires-python = ">=3.12"
+dependencies = [
+    "fastapi>=0.116.0",
+    "httpx>=0.28.0",
+    "pydantic>=2.11.0",
+    "pytest>=8.4.0",
+    "uvicorn>=0.35.0",
+]
+
+[tool.pytest.ini_options]
+pythonpath = ["."]
+testpaths = ["tests"]

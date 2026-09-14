@@ -1,8 +1,8 @@
-# Mini Kanban Board - Product and Technical Scope
+# FocusBoard - Product and Technical Scope
 
 ## Product Vision
 
-Build a personal Mini Kanban board for managing daily to-dos, project tasks, and study tasks. The product should be simple, polished, and portfolio-ready, with clear product decisions and a clean full-stack architecture.
+Build FocusBoard, a personal Kanban board for managing daily to-dos, project tasks, and study tasks. The product should be simple, polished, and portfolio-ready, with clear product decisions and a clean full-stack architecture.
 
 The project should demonstrate thoughtful product scope, API-first development, authentication, drag-and-drop interaction, and database-agnostic backend design.
 

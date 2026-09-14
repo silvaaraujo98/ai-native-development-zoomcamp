@@ -1,0 +1,310 @@
+openapi: 3.1.0
+info:
+  title: FocusBoard API
+  version: 0.1.0
+servers:
+  - url: http://127.0.0.1:8000
+security:
+  - bearerAuth: []
+paths:
+  /auth/login:
+    post:
+      tags: [auth]
+      security: []
+      summary: Log in with username and password
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/LoginRequest"
+      responses:
+        "200":
+          description: Authenticated session
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LoginResponse"
+        "401":
+          description: Invalid credentials
+  /auth/me:
+    get:
+      tags: [auth]
+      summary: Get the authenticated user
+      responses:
+        "200":
+          description: Current user
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/User"
+        "401":
+          description: Missing or invalid token
+  /board:
+    get:
+      tags: [board]
+      summary: Get fixed columns and active tasks
+      responses:
+        "200":
+          description: Board data
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Board"
+  /dashboard/summary:
+    get:
+      tags: [board]
+      summary: Get due date and board summary counts
+      responses:
+        "200":
+          description: Summary counts
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Summary"
+  /tasks:
+    post:
+      tags: [tasks]
+      summary: Create a task in To Do
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TaskCreate"
+      responses:
+        "201":
+          description: Created task
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Task"
+  /tasks/{taskId}:
+    patch:
+      tags: [tasks]
+      summary: Update a task
+      parameters:
+        - $ref: "#/components/parameters/TaskId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TaskUpdate"
+      responses:
+        "200":
+          description: Updated task
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Task"
+        "404":
+          description: Task not found
+    delete:
+      tags: [tasks]
+      summary: Delete a task
+      parameters:
+        - $ref: "#/components/parameters/TaskId"
+      responses:
+        "200":
+          description: Delete result
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Ok"
+        "404":
+          description: Task not found
+  /tasks/{taskId}/move:
+    post:
+      tags: [tasks]
+      summary: Move a task to another fixed column
+      parameters:
+        - $ref: "#/components/parameters/TaskId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/MoveTaskRequest"
+      responses:
+        "200":
+          description: Moved task
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Task"
+        "404":
+          description: Task not found
+  /tasks/{taskId}/archive:
+    post:
+      tags: [tasks]
+      summary: Archive a completed task
+      parameters:
+        - $ref: "#/components/parameters/TaskId"
+      responses:
+        "200":
+          description: Archived task
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Task"
+        "404":
+          description: Task not found
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+  parameters:
+    TaskId:
+      name: taskId
+      in: path
+      required: true
+      schema:
+        type: string
+  schemas:
+    LoginRequest:
+      type: object
+      required: [username, password]
+      properties:
+        username:
+          type: string
+          minLength: 1
+        password:
+          type: string
+          minLength: 1
+    LoginResponse:
+      type: object
+      required: [access_token, token_type, user]
+      properties:
+        access_token:
+          type: string
+        token_type:
+          type: string
+          const: bearer
+        user:
+          $ref: "#/components/schemas/User"
+    User:
+      type: object
+      required: [id, name]
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+    ColumnId:
+      type: string
+      enum: [todo, doing, paused, done]
+    Priority:
+      type: string
+      enum: [Low, Medium, High]
+    Category:
+      type: string
+      enum: [Daily, Project, Study]
+    Recurrence:
+      type: string
+      enum: [None, Daily, Weekly]
+    Column:
+      type: object
+      required: [id, label]
+      properties:
+        id:
+          $ref: "#/components/schemas/ColumnId"
+        label:
+          type: string
+    TaskCreate:
+      type: object
+      required: [title]
+      properties:
+        title:
+          type: string
+          minLength: 1
+        notes:
+          type: string
+          default: ""
+        due_date:
+          type: string
+          format: date
+          nullable: true
+        priority:
+          $ref: "#/components/schemas/Priority"
+        category:
+          $ref: "#/components/schemas/Category"
+        recurrence:
+          $ref: "#/components/schemas/Recurrence"
+    TaskUpdate:
+      type: object
+      properties:
+        title:
+          type: string
+          minLength: 1
+        notes:
+          type: string
+        due_date:
+          type: string
+          format: date
+          nullable: true
+        priority:
+          $ref: "#/components/schemas/Priority"
+        category:
+          $ref: "#/components/schemas/Category"
+        recurrence:
+          $ref: "#/components/schemas/Recurrence"
+        column:
+          $ref: "#/components/schemas/ColumnId"
+    Task:
+      allOf:
+        - $ref: "#/components/schemas/TaskCreate"
+        - type: object
+          required: [id, column, completed_at, archived]
+          properties:
+            id:
+              type: string
+            column:
+              $ref: "#/components/schemas/ColumnId"
+            completed_at:
+              type: string
+              format: date
+              nullable: true
+            archived:
+              type: boolean
+    Board:
+      type: object
+      required: [columns, tasks]
+      properties:
+        columns:
+          type: array
+          items:
+            $ref: "#/components/schemas/Column"
+        tasks:
+          type: array
+          items:
+            $ref: "#/components/schemas/Task"
+    Summary:
+      type: object
+      required: [due_today, overdue, active_tasks, done_visible]
+      properties:
+        due_today:
+          type: integer
+          minimum: 0
+        overdue:
+          type: integer
+          minimum: 0
+        active_tasks:
+          type: integer
+          minimum: 0
+        done_visible:
+          type: integer
+          minimum: 0
+    MoveTaskRequest:
+      type: object
+      required: [column]
+      properties:
+        column:
+          $ref: "#/components/schemas/ColumnId"
+    Ok:
+      type: object
+      required: [ok]
+      properties:
+        ok:
+          type: boolean

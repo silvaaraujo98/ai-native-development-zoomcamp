@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { createRoot } from "react-dom/client";
-import { api, columns, emptyTaskForm, getDueState } from "./mockApi";
+import { api, columns, emptyTaskForm, getDueState } from "./apiClient";
 import "./styles.css";
 
 function Login({ onLogin }) {
@@ -27,7 +27,7 @@ function Login({ onLogin }) {
     <main className="login-shell">
       <section className="login-panel">
         <p className="eyebrow">Personal workflow</p>
-        <h1>Mini Kanban</h1>
+        <h1>FocusBoard</h1>
         <p className="login-copy">
           A focused board for daily work, projects, and study tasks.
         </p>
@@ -229,7 +229,7 @@ function Board({ user, onLogout }) {
       <header className="app-header">
         <div>
           <p className="eyebrow">Signed in as {user.name}</p>
-          <h1>Mini Kanban</h1>
+          <h1>FocusBoard</h1>
         </div>
         <div className="header-actions">
           <button type="button" onClick={createTask}>
