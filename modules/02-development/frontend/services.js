@@ -339,7 +339,16 @@ function createApiInterviewService({
     return authToken || participantTokens[sessionId] || null;
   }
 
-  async function request(path, { method = "GET", body, auth = true, sessionId } = {}) {
+  function clearAuthToken() {
+    authToken = null;
+    storage?.removeItem(authKey);
+  }
+
+  async function request(path, options = {}) {
+    return requestOnce(path, options, true);
+  }
+
+  async function requestOnce(path, { method = "GET", body, auth = true, sessionId } = {}, retryOnUnauthorized = true) {
     const headers = { Accept: "application/json" };
     if (body !== undefined) headers["Content-Type"] = "application/json";
     const token = auth ? tokenFor(sessionId) || await ensureAuth() : null;
@@ -353,6 +362,11 @@ function createApiInterviewService({
 
     const text = await response.text();
     const data = text ? JSON.parse(text) : null;
+    if (response.status === 401 && auth && retryOnUnauthorized) {
+      clearAuthToken();
+      await ensureAuth();
+      return requestOnce(path, { method, body, auth, sessionId }, false);
+    }
     if (!response.ok) {
       const message = data?.message || data?.detail || `Request failed with ${response.status}`;
       throw new Error(message);
