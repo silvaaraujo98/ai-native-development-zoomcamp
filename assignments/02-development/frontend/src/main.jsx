@@ -68,7 +68,37 @@ function TaskModal({ task, onClose, onSave, error }) {
   function submit(event) {
     event.preventDefault();
     if (!form.title.trim()) return;
-    onSave({ ...form, title: form.title.trim() });
+    onSave({
+      ...form,
+      title: form.title.trim(),
+      subtasks: form.subtasks.filter((subtask) => subtask.title.trim()).map((subtask) => ({
+        ...subtask,
+        title: subtask.title.trim(),
+      })),
+    });
+  }
+
+  function addSubtask() {
+    update("subtasks", [
+      ...form.subtasks,
+      { id: `draft-${crypto.randomUUID()}`, title: "", completed: false },
+    ]);
+  }
+
+  function updateSubtask(id, updates) {
+    update(
+      "subtasks",
+      form.subtasks.map((subtask) =>
+        subtask.id === id ? { ...subtask, ...updates } : subtask,
+      ),
+    );
+  }
+
+  function removeSubtask(id) {
+    update(
+      "subtasks",
+      form.subtasks.filter((subtask) => subtask.id !== id),
+    );
   }
 
   return (
@@ -133,6 +163,40 @@ function TaskModal({ task, onClose, onSave, error }) {
             </select>
           </label>
         </div>
+        <section className="subtask-editor" aria-label="Subtasks">
+          <div className="subtask-heading">
+            <h3>Subtasks</h3>
+            <button type="button" className="secondary-button" onClick={addSubtask}>
+              Add subtask
+            </button>
+          </div>
+          <div className="subtask-list">
+            {form.subtasks.map((subtask) => (
+              <div className="subtask-edit-row" key={subtask.id}>
+                <input
+                  type="checkbox"
+                  checked={subtask.completed}
+                  onChange={(event) =>
+                    updateSubtask(subtask.id, { completed: event.target.checked })
+                  }
+                  aria-label={`Complete ${subtask.title || "subtask"}`}
+                />
+                <input
+                  value={subtask.title}
+                  onChange={(event) => updateSubtask(subtask.id, { title: event.target.value })}
+                  placeholder="Subtask title"
+                />
+                <button
+                  type="button"
+                  className="danger-button secondary-button"
+                  onClick={() => removeSubtask(subtask.id)}
+                >
+                  Remove
+                </button>
+              </div>
+            ))}
+          </div>
+        </section>
         <div className="modal-actions">
           {error ? <p className="form-error modal-error">{error}</p> : null}
           <button type="button" className="secondary-button" onClick={onClose}>
@@ -145,9 +209,18 @@ function TaskModal({ task, onClose, onSave, error }) {
   );
 }
 
-function TaskCard({ task, onEdit, onDelete, onArchive, onDragStart, actionInProgress }) {
+function TaskCard({
+  task,
+  onEdit,
+  onDelete,
+  onArchive,
+  onDragStart,
+  onToggleSubtask,
+  actionInProgress,
+}) {
   const dueState = getDueState(task);
   const stopButtonDrag = (event) => event.stopPropagation();
+  const completedSubtasks = task.subtasks.filter((subtask) => subtask.completed).length;
 
   return (
     <article
@@ -165,6 +238,24 @@ function TaskCard({ task, onEdit, onDelete, onArchive, onDragStart, actionInProg
         <span>{task.dueDate || "No due date"}</span>
         <span>{task.recurrence}</span>
       </div>
+      {task.subtasks.length ? (
+        <div className="subtask-card-list">
+          <span className="subtask-progress">
+            {completedSubtasks}/{task.subtasks.length} subtasks
+          </span>
+          {task.subtasks.map((subtask) => (
+            <label className="subtask-card-row" key={subtask.id} onPointerDown={stopButtonDrag}>
+              <input
+                type="checkbox"
+                checked={subtask.completed}
+                disabled={actionInProgress}
+                onChange={(event) => onToggleSubtask(task, subtask.id, event.target.checked)}
+              />
+              <span>{subtask.title}</span>
+            </label>
+          ))}
+        </div>
+      ) : null}
       {dueState === "due-today" ? <strong className="due-label">Due today</strong> : null}
       {dueState === "overdue" ? <strong className="due-label overdue-label">Overdue</strong> : null}
       <div className="card-actions">
@@ -279,6 +370,26 @@ function Board({ user, onLogout }) {
     }
   }
 
+  async function toggleSubtask(task, subtaskId, completed) {
+    setError("");
+    setDraggedId(null);
+    setActionTaskId(task.id);
+    const nextTask = {
+      ...task,
+      subtasks: task.subtasks.map((subtask) =>
+        subtask.id === subtaskId ? { ...subtask, completed } : subtask,
+      ),
+    };
+    try {
+      await api.updateTask(task.id, nextTask);
+      await refresh();
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setActionTaskId(null);
+    }
+  }
+
   return (
     <main className="app-shell">
       <header className="app-header">
@@ -353,6 +464,7 @@ function Board({ user, onLogout }) {
                     event.dataTransfer.effectAllowed = "move";
                     setDraggedId(id);
                   }}
+                  onToggleSubtask={toggleSubtask}
                   actionInProgress={actionTaskId === task.id}
                 />
               ))}

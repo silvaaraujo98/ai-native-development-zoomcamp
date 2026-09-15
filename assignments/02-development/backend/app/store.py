@@ -3,7 +3,7 @@ from contextlib import contextmanager
 from datetime import date, timedelta
 from uuid import uuid4
 
-from sqlalchemy import Boolean, Date, ForeignKey, String, create_engine, select
+from sqlalchemy import Boolean, Date, ForeignKey, Integer, String, create_engine, select
 from sqlalchemy.orm import DeclarativeBase, Mapped, Session, mapped_column, sessionmaker
 from sqlalchemy.pool import StaticPool
 
@@ -13,6 +13,8 @@ from app.models import (
     ColumnId,
     Priority,
     Recurrence,
+    Subtask,
+    SubtaskInput,
     Task,
     TaskCreate,
     TaskUpdate,
@@ -72,6 +74,16 @@ class TaskRow(Base):
     archived: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
 
 
+class SubtaskRow(Base):
+    __tablename__ = "subtasks"
+
+    id: Mapped[str] = mapped_column(String, primary_key=True)
+    task_id: Mapped[str] = mapped_column(ForeignKey("tasks.id"), nullable=False, index=True)
+    title: Mapped[str] = mapped_column(String, nullable=False)
+    completed: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    position: Mapped[int] = mapped_column(Integer, nullable=False)
+
+
 def _today() -> date:
     return date.today()
 
@@ -114,6 +126,15 @@ def _task_from_row(row: TaskRow) -> Task:
         column=ColumnId(row.column),
         completed_at=row.completed_at,
         archived=row.archived,
+        subtasks=[],
+    )
+
+
+def _subtask_from_row(row: SubtaskRow) -> Subtask:
+    return Subtask(
+        id=row.id,
+        title=row.title,
+        completed=row.completed,
     )
 
 
@@ -259,12 +280,12 @@ class SqlAlchemyStore:
                 .where(TaskRow.user_id == user_id, TaskRow.archived.is_(False))
                 .order_by(TaskRow.id)
             ).all()
-            return [_task_from_row(row) for row in rows]
+            return [self._task_with_subtasks(db, row) for row in rows]
 
     def get_task(self, user_id: str, task_id: str) -> Task | None:
         with self.session() as db:
             row = self._get_task_row(db, user_id, task_id)
-            return _task_from_row(row) if row else None
+            return self._task_with_subtasks(db, row) if row else None
 
     def create_task(self, user_id: str, payload: TaskCreate) -> Task:
         with self.session() as db:
@@ -287,7 +308,10 @@ class SqlAlchemyStore:
             )
             db.add(row)
             db.flush()
-            return _task_from_row(row)
+            self._replace_subtasks(db, row, payload.subtasks)
+            self._complete_task_if_all_subtasks_done(db, row)
+            db.flush()
+            return self._task_with_subtasks(db, row)
 
     def update_task(self, user_id: str, task_id: str, payload: TaskUpdate) -> Task | None:
         with self.session() as db:
@@ -307,6 +331,9 @@ class SqlAlchemyStore:
             )
 
             for field_name, value in updates.items():
+                if field_name == "subtasks":
+                    self._replace_subtasks(db, row, value)
+                    continue
                 if value is None:
                     setattr(row, field_name, None)
                 elif field_name in {"priority", "category", "recurrence", "column"}:
@@ -319,14 +346,17 @@ class SqlAlchemyStore:
             elif row.completed_at is None:
                 row.completed_at = _today()
 
+            self._complete_task_if_all_subtasks_done(db, row)
             db.flush()
-            return _task_from_row(row)
+            return self._task_with_subtasks(db, row)
 
     def delete_task(self, user_id: str, task_id: str) -> bool:
         with self.session() as db:
             row = self._get_task_row(db, user_id, task_id)
             if row is None:
                 return False
+            for subtask in self._list_subtask_rows(db, row.id):
+                db.delete(subtask)
             db.delete(row)
             return True
 
@@ -348,7 +378,7 @@ class SqlAlchemyStore:
                 self._create_next_recurring_task(db, row)
 
             db.flush()
-            return _task_from_row(row)
+            return self._task_with_subtasks(db, row)
 
     def _create_next_recurring_task(self, db: Session, completed_task: TaskRow) -> None:
         if completed_task.due_date is None:
@@ -387,7 +417,7 @@ class SqlAlchemyStore:
                 return None
             row.archived = True
             db.flush()
-            return _task_from_row(row)
+            return self._task_with_subtasks(db, row)
 
     def auto_archive_done_tasks(self, user_id: str) -> None:
         cutoff = _today() - timedelta(days=7)
@@ -414,6 +444,55 @@ class SqlAlchemyStore:
         return db.scalar(
             select(TaskRow).where(TaskRow.id == task_id, TaskRow.user_id == user_id)
         )
+
+    def _task_with_subtasks(self, db: Session, row: TaskRow) -> Task:
+        task = _task_from_row(row)
+        task.subtasks = [_subtask_from_row(subtask) for subtask in self._list_subtask_rows(db, row.id)]
+        return task
+
+    def _list_subtask_rows(self, db: Session, task_id: str) -> list[SubtaskRow]:
+        return list(
+            db.scalars(
+                select(SubtaskRow)
+                .where(SubtaskRow.task_id == task_id)
+                .order_by(SubtaskRow.position, SubtaskRow.id)
+            ).all()
+        )
+
+    def _replace_subtasks(
+        self,
+        db: Session,
+        task: TaskRow,
+        subtasks: list[SubtaskInput | dict],
+    ) -> None:
+        for existing in self._list_subtask_rows(db, task.id):
+            db.delete(existing)
+        db.flush()
+
+        for position, subtask in enumerate(subtasks):
+            subtask_input = (
+                subtask if isinstance(subtask, SubtaskInput) else SubtaskInput.model_validate(subtask)
+            )
+            db.add(
+                SubtaskRow(
+                    id=subtask_input.id or f"subtask-{uuid4()}",
+                    task_id=task.id,
+                    title=subtask_input.title,
+                    completed=subtask_input.completed,
+                    position=position,
+                )
+            )
+
+    def _complete_task_if_all_subtasks_done(self, db: Session, task: TaskRow) -> None:
+        subtasks = self._list_subtask_rows(db, task.id)
+        if not subtasks or not all(subtask.completed for subtask in subtasks):
+            return
+        previous_column = ColumnId(task.column)
+        task.column = ColumnId.DONE.value
+        if task.completed_at is None:
+            task.completed_at = _today()
+        if previous_column != ColumnId.DONE and Recurrence(task.recurrence) != Recurrence.NONE:
+            self._create_next_recurring_task(db, task)
 
     def _ensure_high_priority_daily_limit(
         self,

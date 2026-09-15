@@ -124,6 +124,83 @@ def test_update_task_edits_fields(client, auth_headers):
     assert body["priority"] == "Medium"
 
 
+def test_create_task_accepts_subtasks(client, auth_headers):
+    response = client.post(
+        "/tasks",
+        headers=auth_headers,
+        json={
+            "title": "Ship subtask workflow",
+            "subtasks": [
+                {"title": "Add API shape"},
+                {"title": "Render checkboxes", "completed": True},
+            ],
+        },
+    )
+
+    assert response.status_code == 201
+    body = response.json()
+    assert [subtask["title"] for subtask in body["subtasks"]] == [
+        "Add API shape",
+        "Render checkboxes",
+    ]
+    assert body["subtasks"][0]["completed"] is False
+    assert body["subtasks"][1]["completed"] is True
+    assert body["column"] == "todo"
+
+
+def test_update_task_with_some_incomplete_subtasks_stays_active(client, auth_headers):
+    response = client.patch(
+        "/tasks/task-1",
+        headers=auth_headers,
+        json={
+            "subtasks": [
+                {"title": "First", "completed": True},
+                {"title": "Second", "completed": False},
+            ]
+        },
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["column"] == "todo"
+    assert body["completed_at"] is None
+
+
+def test_update_task_with_all_subtasks_complete_moves_task_to_done(client, auth_headers):
+    response = client.patch(
+        "/tasks/task-1",
+        headers=auth_headers,
+        json={
+            "subtasks": [
+                {"title": "First", "completed": True},
+                {"title": "Second", "completed": True},
+            ]
+        },
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["column"] == "done"
+    assert body["completed_at"] == str(date.today())
+
+
+def test_completing_subtasks_on_recurring_task_creates_next_copy(client, auth_headers):
+    response = client.patch(
+        "/tasks/task-2",
+        headers=auth_headers,
+        json={"subtasks": [{"title": "Study", "completed": True}]},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["column"] == "done"
+
+    board = client.get("/board", headers=auth_headers).json()
+    daily_study_tasks = [task for task in board["tasks"] if task["title"] == "Daily study block"]
+    assert len(daily_study_tasks) == 2
+    next_task = next(task for task in daily_study_tasks if task["column"] == "todo")
+    assert next_task["due_date"] == str(date.today())
+
+
 def test_delete_task_removes_it_from_board(client, auth_headers):
     response = client.delete("/tasks/task-1", headers=auth_headers)
     assert response.status_code == 200

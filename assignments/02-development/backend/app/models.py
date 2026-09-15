@@ -57,6 +57,18 @@ class Column(BaseModel):
     label: str
 
 
+class Subtask(BaseModel):
+    id: str
+    title: str = Field(min_length=1)
+    completed: bool = False
+
+
+class SubtaskInput(BaseModel):
+    id: str | None = None
+    title: str = Field(min_length=1)
+    completed: bool = False
+
+
 class TaskBase(BaseModel):
     title: str = Field(min_length=1)
     notes: str = ""
@@ -67,7 +79,7 @@ class TaskBase(BaseModel):
 
 
 class TaskCreate(TaskBase):
-    pass
+    subtasks: list[SubtaskInput] = Field(default_factory=list)
 
 
 class TaskUpdate(BaseModel):
@@ -78,6 +90,7 @@ class TaskUpdate(BaseModel):
     category: Category | None = None
     recurrence: Recurrence | None = None
     column: ColumnId | None = None
+    subtasks: list[SubtaskInput] | None = None
 
 
 class Task(TaskBase):
@@ -86,6 +99,7 @@ class Task(TaskBase):
     column: ColumnId = ColumnId.TODO
     completed_at: date | None = None
     archived: bool = False
+    subtasks: list[Subtask] = Field(default_factory=list)
 
 
 class TaskResponse(TaskBase):
@@ -95,6 +109,7 @@ class TaskResponse(TaskBase):
     column: ColumnId
     completed_at: date | None = None
     archived: bool = False
+    subtasks: list[Subtask] = Field(default_factory=list)
 
 
 class BoardResponse(BaseModel):

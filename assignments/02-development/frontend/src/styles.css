@@ -54,6 +54,12 @@ textarea {
   padding: 0.75rem 0.85rem;
 }
 
+input[type="checkbox"] {
+  accent-color: #75d6c5;
+  margin: 0;
+  width: auto;
+}
+
 textarea {
   min-height: 6rem;
   resize: vertical;
@@ -368,6 +374,62 @@ h1 {
   display: grid;
   gap: 1rem;
   grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.subtask-editor,
+.subtask-card-list {
+  display: grid;
+  gap: 0.65rem;
+}
+
+.subtask-heading,
+.subtask-edit-row,
+.subtask-card-row {
+  align-items: center;
+  display: flex;
+  gap: 0.65rem;
+}
+
+.subtask-heading {
+  justify-content: space-between;
+}
+
+.subtask-heading h3 {
+  font-size: 1rem;
+  margin: 0;
+}
+
+.subtask-edit-row input[type="text"],
+.subtask-edit-row input:not([type]) {
+  margin-top: 0;
+}
+
+.subtask-edit-row button {
+  flex: 0 0 auto;
+}
+
+.subtask-card-list {
+  border-top: 1px solid #26313f;
+  margin-top: 0.75rem;
+  padding-top: 0.75rem;
+}
+
+.subtask-progress {
+  color: #97a6b5;
+  font-size: 0.78rem;
+  font-weight: 800;
+}
+
+.subtask-card-row {
+  color: #c5d1dc;
+  cursor: pointer;
+  font-size: 0.86rem;
+  font-weight: 700;
+  line-height: 1.35;
+}
+
+.subtask-card-row span {
+  overflow-wrap: anywhere;
 }
 
 @media (max-width: 900px) {

@@ -212,6 +212,30 @@ components:
           $ref: "#/components/schemas/ColumnId"
         label:
           type: string
+    SubtaskInput:
+      type: object
+      required: [title]
+      properties:
+        id:
+          type: string
+          nullable: true
+        title:
+          type: string
+          minLength: 1
+        completed:
+          type: boolean
+          default: false
+    Subtask:
+      type: object
+      required: [id, title, completed]
+      properties:
+        id:
+          type: string
+        title:
+          type: string
+          minLength: 1
+        completed:
+          type: boolean
     TaskCreate:
       type: object
       required: [title]
@@ -232,6 +256,11 @@ components:
           $ref: "#/components/schemas/Category"
         recurrence:
           $ref: "#/components/schemas/Recurrence"
+        subtasks:
+          type: array
+          items:
+            $ref: "#/components/schemas/SubtaskInput"
+          default: []
     TaskUpdate:
       type: object
       properties:
@@ -252,6 +281,10 @@ components:
           $ref: "#/components/schemas/Recurrence"
         column:
           $ref: "#/components/schemas/ColumnId"
+        subtasks:
+          type: array
+          items:
+            $ref: "#/components/schemas/SubtaskInput"
     Task:
       allOf:
         - $ref: "#/components/schemas/TaskCreate"
@@ -268,6 +301,10 @@ components:
               nullable: true
             archived:
               type: boolean
+            subtasks:
+              type: array
+              items:
+                $ref: "#/components/schemas/Subtask"
     Board:
       type: object
       required: [columns, tasks]

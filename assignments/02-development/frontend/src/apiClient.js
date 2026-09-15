@@ -66,6 +66,7 @@ function toFrontendTask(task) {
     column: task.column,
     completedAt: task.completed_at,
     archived: task.archived,
+    subtasks: task.subtasks ?? [],
   };
 }
 
@@ -78,6 +79,11 @@ function toBackendTask(task) {
     category: task.category,
     recurrence: task.recurrence,
     column: task.column,
+    subtasks: (task.subtasks ?? []).map((subtask) => ({
+      id: subtask.id?.startsWith("draft-") ? undefined : subtask.id,
+      title: subtask.title,
+      completed: subtask.completed,
+    })),
   };
 }
 
@@ -90,6 +96,7 @@ export function emptyTaskForm() {
     category: "Daily",
     recurrence: "None",
     column: "todo",
+    subtasks: [],
   };
 }
 
