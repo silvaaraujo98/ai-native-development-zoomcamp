@@ -21,6 +21,96 @@ def test_create_task_defaults_to_todo(client, auth_headers):
     assert body["column"] == "todo"
 
 
+def test_create_task_rejects_fifth_high_priority_task_on_same_day(client, auth_headers):
+    target_date = date.today() + timedelta(days=1)
+    for index in range(4):
+        response = client.post(
+            "/tasks",
+            headers=auth_headers,
+            json={
+                "title": f"High priority task {index}",
+                "due_date": str(target_date),
+                "priority": "High",
+            },
+        )
+        assert response.status_code == 201
+
+    response = client.post(
+        "/tasks",
+        headers=auth_headers,
+        json={
+            "title": "One high priority too many",
+            "due_date": str(target_date),
+            "priority": "High",
+        },
+    )
+
+    assert response.status_code == 400
+    assert response.json()["detail"] == "You already have 4 high-priority tasks for this day."
+
+
+def test_create_task_allows_high_priority_tasks_on_different_days(client, auth_headers):
+    target_date = date.today() + timedelta(days=1)
+    for index in range(4):
+        response = client.post(
+            "/tasks",
+            headers=auth_headers,
+            json={
+                "title": f"High priority task {index}",
+                "due_date": str(target_date),
+                "priority": "High",
+            },
+        )
+        assert response.status_code == 201
+
+    response = client.post(
+        "/tasks",
+        headers=auth_headers,
+        json={
+            "title": "Different day high priority",
+            "due_date": str(target_date + timedelta(days=1)),
+            "priority": "High",
+        },
+    )
+
+    assert response.status_code == 201
+
+
+def test_update_task_rejects_fifth_high_priority_task_on_same_day(client, auth_headers):
+    target_date = date.today() + timedelta(days=1)
+    for index in range(4):
+        response = client.post(
+            "/tasks",
+            headers=auth_headers,
+            json={
+                "title": f"High priority task {index}",
+                "due_date": str(target_date),
+                "priority": "High",
+            },
+        )
+        assert response.status_code == 201
+
+    response = client.patch(
+        "/tasks/task-3",
+        headers=auth_headers,
+        json={"due_date": str(target_date), "priority": "High"},
+    )
+
+    assert response.status_code == 400
+    assert response.json()["detail"] == "You already have 4 high-priority tasks for this day."
+
+
+def test_update_task_allows_existing_high_priority_task_to_keep_its_day(client, auth_headers):
+    response = client.patch(
+        "/tasks/task-1",
+        headers=auth_headers,
+        json={"title": "Keep high priority credit"},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["title"] == "Keep high priority credit"
+
+
 def test_update_task_edits_fields(client, auth_headers):
     response = client.patch(
         "/tasks/task-1",

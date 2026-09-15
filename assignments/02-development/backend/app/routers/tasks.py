@@ -9,7 +9,7 @@ from app.models import (
     TaskUpdate,
     UserRecord,
 )
-from app.store import store
+from app.store import HighPriorityDailyLimitError, store
 
 
 router = APIRouter(prefix="/tasks", tags=["tasks"])
@@ -19,12 +19,19 @@ def not_found() -> HTTPException:
     return HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Task not found.")
 
 
+def high_priority_limit_reached(exc: HighPriorityDailyLimitError) -> HTTPException:
+    return HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc))
+
+
 @router.post("", response_model=TaskResponse, status_code=status.HTTP_201_CREATED)
 def create_task(
     payload: TaskCreate,
     user: UserRecord = Depends(get_current_user),
 ) -> TaskResponse:
-    return store.create_task(user.id, payload)
+    try:
+        return store.create_task(user.id, payload)
+    except HighPriorityDailyLimitError as exc:
+        raise high_priority_limit_reached(exc) from exc
 
 
 @router.patch("/{task_id}", response_model=TaskResponse)
@@ -33,7 +40,10 @@ def update_task(
     payload: TaskUpdate,
     user: UserRecord = Depends(get_current_user),
 ) -> TaskResponse:
-    task = store.update_task(user.id, task_id, payload)
+    try:
+        task = store.update_task(user.id, task_id, payload)
+    except HighPriorityDailyLimitError as exc:
+        raise high_priority_limit_reached(exc) from exc
     if task is None:
         raise not_found()
     return task
@@ -52,7 +62,10 @@ def move_task(
     payload: MoveTaskRequest,
     user: UserRecord = Depends(get_current_user),
 ) -> TaskResponse:
-    task = store.move_task(user.id, task_id, payload.column)
+    try:
+        task = store.move_task(user.id, task_id, payload.column)
+    except HighPriorityDailyLimitError as exc:
+        raise high_priority_limit_reached(exc) from exc
     if task is None:
         raise not_found()
     return task

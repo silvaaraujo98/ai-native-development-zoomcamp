@@ -29,6 +29,11 @@ COLUMNS = [
     Column(id=ColumnId.PAUSED, label="Paused"),
     Column(id=ColumnId.DONE, label="Done"),
 ]
+HIGH_PRIORITY_DAILY_LIMIT = 4
+
+
+class HighPriorityDailyLimitError(ValueError):
+    pass
 
 
 class Base(DeclarativeBase):
@@ -263,6 +268,12 @@ class SqlAlchemyStore:
 
     def create_task(self, user_id: str, payload: TaskCreate) -> Task:
         with self.session() as db:
+            self._ensure_high_priority_daily_limit(
+                db,
+                user_id=user_id,
+                due_date=payload.due_date,
+                priority=payload.priority,
+            )
             row = TaskRow(
                 id=f"task-{uuid4()}",
                 user_id=user_id,
@@ -285,6 +296,16 @@ class SqlAlchemyStore:
                 return None
 
             updates = payload.model_dump(exclude_unset=True)
+            next_due_date = updates.get("due_date", row.due_date)
+            next_priority = updates.get("priority", Priority(row.priority))
+            self._ensure_high_priority_daily_limit(
+                db,
+                user_id=user_id,
+                due_date=next_due_date,
+                priority=next_priority,
+                excluded_task_id=row.id,
+            )
+
             for field_name, value in updates.items():
                 if value is None:
                     setattr(row, field_name, None)
@@ -336,6 +357,13 @@ class SqlAlchemyStore:
             days = 7 if Recurrence(completed_task.recurrence) == Recurrence.WEEKLY else 1
             next_due_date = completed_task.due_date + timedelta(days=days)
 
+        self._ensure_high_priority_daily_limit(
+            db,
+            user_id=completed_task.user_id,
+            due_date=next_due_date,
+            priority=Priority(completed_task.priority),
+        )
+
         db.add(
             TaskRow(
                 id=f"task-{uuid4()}",
@@ -386,6 +414,32 @@ class SqlAlchemyStore:
         return db.scalar(
             select(TaskRow).where(TaskRow.id == task_id, TaskRow.user_id == user_id)
         )
+
+    def _ensure_high_priority_daily_limit(
+        self,
+        db: Session,
+        user_id: str,
+        due_date: date | None,
+        priority: Priority,
+        excluded_task_id: str | None = None,
+    ) -> None:
+        if priority != Priority.HIGH or due_date is None:
+            return
+
+        query = select(TaskRow).where(
+            TaskRow.user_id == user_id,
+            TaskRow.archived.is_(False),
+            TaskRow.due_date == due_date,
+            TaskRow.priority == Priority.HIGH.value,
+        )
+        if excluded_task_id is not None:
+            query = query.where(TaskRow.id != excluded_task_id)
+
+        high_priority_tasks = db.scalars(query).all()
+        if len(high_priority_tasks) >= HIGH_PRIORITY_DAILY_LIMIT:
+            raise HighPriorityDailyLimitError(
+                f"You already have {HIGH_PRIORITY_DAILY_LIMIT} high-priority tasks for this day."
+            )
 
 
 store = SqlAlchemyStore()

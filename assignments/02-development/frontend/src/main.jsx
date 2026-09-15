@@ -54,7 +54,7 @@ function Login({ onLogin }) {
   );
 }
 
-function TaskModal({ task, onClose, onSave }) {
+function TaskModal({ task, onClose, onSave, error }) {
   const [form, setForm] = useState(task ?? emptyTaskForm());
   const isEditing = Boolean(task?.id);
 
@@ -131,6 +131,7 @@ function TaskModal({ task, onClose, onSave }) {
           </label>
         </div>
         <div className="modal-actions">
+          {error ? <p className="form-error modal-error">{error}</p> : null}
           <button type="button" className="secondary-button" onClick={onClose}>
             Cancel
           </button>
@@ -199,6 +200,7 @@ function Board({ user, onLogout }) {
   const [draggedId, setDraggedId] = useState(null);
   const [actionTaskId, setActionTaskId] = useState(null);
   const [error, setError] = useState("");
+  const [modalError, setModalError] = useState("");
 
   async function refresh() {
     const [board, nextSummary] = await Promise.all([api.getBoard(), api.getDashboardSummary()]);
@@ -219,18 +221,24 @@ function Board({ user, onLogout }) {
 
   function createTask() {
     setModalTask(null);
+    setModalError("");
     setModalOpen(true);
   }
 
   async function saveTask(task) {
     setError("");
-    if (task.id) {
-      await api.updateTask(task.id, task);
-    } else {
-      await api.createTask(task);
+    setModalError("");
+    try {
+      if (task.id) {
+        await api.updateTask(task.id, task);
+      } else {
+        await api.createTask(task);
+      }
+      setModalOpen(false);
+      await refresh();
+    } catch (err) {
+      setModalError(err.message);
     }
-    setModalOpen(false);
-    await refresh();
   }
 
   async function dropOnColumn(columnId) {
@@ -312,6 +320,7 @@ function Board({ user, onLogout }) {
                   task={task}
                   onEdit={(nextTask) => {
                     setModalTask(nextTask);
+                    setModalError("");
                     setModalOpen(true);
                   }}
                   onDelete={async (id) => {
@@ -337,7 +346,12 @@ function Board({ user, onLogout }) {
       </section>
 
       {modalOpen ? (
-        <TaskModal task={modalTask} onClose={() => setModalOpen(false)} onSave={saveTask} />
+        <TaskModal
+          task={modalTask}
+          onClose={() => setModalOpen(false)}
+          onSave={saveTask}
+          error={modalError}
+        />
       ) : null}
     </main>
   );
