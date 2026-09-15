@@ -480,6 +480,16 @@ h1 {
   gap: 0.55rem;
 }
 
+.subtask-composer {
+  display: grid;
+  gap: 0.55rem;
+  grid-template-columns: minmax(0, 1fr) auto;
+}
+
+.subtask-composer input {
+  margin-top: 0;
+}
+
 .comment-composer textarea {
   min-height: 4.5rem;
 }
@@ -509,7 +519,8 @@ h1 {
   }
 
   .summary-row,
-  .form-grid {
+  .form-grid,
+  .subtask-composer {
     grid-template-columns: 1fr;
   }
 

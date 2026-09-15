@@ -59,6 +59,7 @@ function Login({ onLogin }) {
 
 function TaskModal({ task, onClose, onSave, error }) {
   const [form, setForm] = useState(task ?? emptyTaskForm());
+  const [subtaskDraft, setSubtaskDraft] = useState("");
   const [commentDraft, setCommentDraft] = useState("");
   const isEditing = Boolean(task?.id);
 
@@ -66,28 +67,51 @@ function TaskModal({ task, onClose, onSave, error }) {
     setForm((current) => ({ ...current, [field]: value }));
   }
 
-  function submit(event) {
+  async function submit(event) {
     event.preventDefault();
     if (!form.title.trim()) return;
-    onSave({
-      ...form,
-      title: form.title.trim(),
-      subtasks: form.subtasks.filter((subtask) => subtask.title.trim()).map((subtask) => ({
+    const savedTask = await onSave(normalizeTaskForm(form));
+    if (savedTask) {
+      setForm(savedTask);
+    }
+  }
+
+  function normalizeTaskForm(nextForm) {
+    return {
+      ...nextForm,
+      title: nextForm.title.trim(),
+      subtasks: nextForm.subtasks.filter((subtask) => subtask.title.trim()).map((subtask) => ({
         ...subtask,
         title: subtask.title.trim(),
       })),
-      comments: form.comments.filter((comment) => comment.body.trim()).map((comment) => ({
+      comments: nextForm.comments.filter((comment) => comment.body.trim()).map((comment) => ({
         ...comment,
         body: comment.body.trim(),
       })),
-    });
+    };
   }
 
-  function addSubtask() {
-    update("subtasks", [
-      ...form.subtasks,
-      { id: `draft-${crypto.randomUUID()}`, title: "", completed: false },
-    ]);
+  async function persistDetails(nextForm) {
+    setForm(nextForm);
+    if (!isEditing) return;
+    const savedTask = await onSave(normalizeTaskForm(nextForm), { keepOpen: true });
+    if (savedTask) {
+      setForm(savedTask);
+    }
+  }
+
+  async function addSubtask() {
+    const title = subtaskDraft.trim();
+    if (!title) return;
+    const nextForm = {
+      ...form,
+      subtasks: [
+        ...form.subtasks,
+        { id: `draft-${crypto.randomUUID()}`, title, completed: false },
+      ],
+    };
+    setSubtaskDraft("");
+    await persistDetails(nextForm);
   }
 
   function updateSubtask(id, updates) {
@@ -99,18 +123,22 @@ function TaskModal({ task, onClose, onSave, error }) {
     );
   }
 
-  function removeSubtask(id) {
-    update(
-      "subtasks",
-      form.subtasks.filter((subtask) => subtask.id !== id),
-    );
+  async function removeSubtask(id) {
+    await persistDetails({
+      ...form,
+      subtasks: form.subtasks.filter((subtask) => subtask.id !== id),
+    });
   }
 
-  function addComment() {
+  async function addComment() {
     const body = commentDraft.trim();
     if (!body) return;
-    update("comments", [...form.comments, { id: `draft-${crypto.randomUUID()}`, body }]);
+    const nextForm = {
+      ...form,
+      comments: [...form.comments, { id: `draft-${crypto.randomUUID()}`, body }],
+    };
     setCommentDraft("");
+    await persistDetails(nextForm);
   }
 
   function formatCommentTime(comment) {
@@ -186,6 +214,13 @@ function TaskModal({ task, onClose, onSave, error }) {
         <section className="subtask-editor" aria-label="Subtasks">
           <div className="subtask-heading">
             <h3>Subtasks</h3>
+          </div>
+          <div className="subtask-composer">
+            <input
+              value={subtaskDraft}
+              onChange={(event) => setSubtaskDraft(event.target.value)}
+              placeholder="Add a subtask"
+            />
             <button type="button" className="secondary-button" onClick={addSubtask}>
               Add subtask
             </button>
@@ -372,7 +407,7 @@ function Board({ user, onLogout }) {
     setModalOpen(true);
   }
 
-  async function saveTask(task) {
+  async function saveTask(task, options = {}) {
     setError("");
     setModalError("");
     const dailyHighPriorityTasks = tasks.filter(
@@ -389,15 +424,20 @@ function Board({ user, onLogout }) {
     }
 
     try {
+      let savedTask;
       if (task.id) {
-        await api.updateTask(task.id, task);
+        savedTask = await api.updateTask(task.id, task);
       } else {
-        await api.createTask(task);
+        savedTask = await api.createTask(task);
       }
-      setModalOpen(false);
+      if (!options.keepOpen) {
+        setModalOpen(false);
+      }
       await refresh();
+      return savedTask;
     } catch (err) {
       setModalError(err.message);
+      return null;
     }
   }
 
