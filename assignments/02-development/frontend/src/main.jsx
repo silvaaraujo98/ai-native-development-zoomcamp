@@ -3,6 +3,9 @@ import { createRoot } from "react-dom/client";
 import { api, columns, emptyTaskForm, getDueState } from "./apiClient";
 import "./styles.css";
 
+const HIGH_PRIORITY_DAILY_LIMIT = 4;
+const highPriorityLimitMessage = `You already have ${HIGH_PRIORITY_DAILY_LIMIT} high-priority tasks for this day.`;
+
 function Login({ onLogin }) {
   const [username, setUsername] = useState("demo");
   const [password, setPassword] = useState("demo");
@@ -228,6 +231,19 @@ function Board({ user, onLogout }) {
   async function saveTask(task) {
     setError("");
     setModalError("");
+    const dailyHighPriorityTasks = tasks.filter(
+      (currentTask) =>
+        currentTask.id !== task.id &&
+        currentTask.priority === "High" &&
+        currentTask.dueDate === task.dueDate &&
+        currentTask.dueDate,
+    );
+    const usesHighPriorityCredit = task.priority === "High" && task.dueDate;
+    if (usesHighPriorityCredit && dailyHighPriorityTasks.length >= HIGH_PRIORITY_DAILY_LIMIT) {
+      setModalError(highPriorityLimitMessage);
+      return;
+    }
+
     try {
       if (task.id) {
         await api.updateTask(task.id, task);
