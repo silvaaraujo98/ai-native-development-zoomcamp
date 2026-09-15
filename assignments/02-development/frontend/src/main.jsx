@@ -59,6 +59,7 @@ function Login({ onLogin }) {
 
 function TaskModal({ task, onClose, onSave, error }) {
   const [form, setForm] = useState(task ?? emptyTaskForm());
+  const [commentDraft, setCommentDraft] = useState("");
   const isEditing = Boolean(task?.id);
 
   function update(field, value) {
@@ -74,6 +75,10 @@ function TaskModal({ task, onClose, onSave, error }) {
       subtasks: form.subtasks.filter((subtask) => subtask.title.trim()).map((subtask) => ({
         ...subtask,
         title: subtask.title.trim(),
+      })),
+      comments: form.comments.filter((comment) => comment.body.trim()).map((comment) => ({
+        ...comment,
+        body: comment.body.trim(),
       })),
     });
   }
@@ -99,6 +104,21 @@ function TaskModal({ task, onClose, onSave, error }) {
       "subtasks",
       form.subtasks.filter((subtask) => subtask.id !== id),
     );
+  }
+
+  function addComment() {
+    const body = commentDraft.trim();
+    if (!body) return;
+    update("comments", [...form.comments, { id: `draft-${crypto.randomUUID()}`, body }]);
+    setCommentDraft("");
+  }
+
+  function formatCommentTime(comment) {
+    if (!comment.created_at) return "Pending";
+    return new Date(comment.created_at).toLocaleString([], {
+      dateStyle: "medium",
+      timeStyle: "short",
+    });
   }
 
   return (
@@ -197,6 +217,34 @@ function TaskModal({ task, onClose, onSave, error }) {
             ))}
           </div>
         </section>
+        <section className="comment-timeline" aria-label="Comment timeline">
+          <div className="subtask-heading">
+            <h3>Comments</h3>
+            <span>{form.comments.length}</span>
+          </div>
+          <div className="comment-list">
+            {form.comments.length ? (
+              form.comments.map((comment) => (
+                <article className="comment-item" key={comment.id}>
+                  <time>{formatCommentTime(comment)}</time>
+                  <p>{comment.body}</p>
+                </article>
+              ))
+            ) : (
+              <p className="empty-timeline">No comments yet.</p>
+            )}
+          </div>
+          <div className="comment-composer">
+            <textarea
+              value={commentDraft}
+              onChange={(event) => setCommentDraft(event.target.value)}
+              placeholder="Add a comment"
+            />
+            <button type="button" className="secondary-button" onClick={addComment}>
+              Add comment
+            </button>
+          </div>
+        </section>
         <div className="modal-actions">
           {error ? <p className="form-error modal-error">{error}</p> : null}
           <button type="button" className="secondary-button" onClick={onClose}>
@@ -238,6 +286,11 @@ function TaskCard({
         <span>{task.dueDate || "No due date"}</span>
         <span>{task.recurrence}</span>
       </div>
+      {task.comments.length ? (
+        <span className="comment-count">
+          {task.comments.length} {task.comments.length === 1 ? "comment" : "comments"}
+        </span>
+      ) : null}
       {task.subtasks.length ? (
         <div className="subtask-card-list">
           <span className="subtask-progress">

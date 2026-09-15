@@ -236,6 +236,32 @@ components:
           minLength: 1
         completed:
           type: boolean
+    CommentInput:
+      type: object
+      required: [body]
+      properties:
+        id:
+          type: string
+          nullable: true
+        body:
+          type: string
+          minLength: 1
+        created_at:
+          type: string
+          format: date-time
+          nullable: true
+    Comment:
+      type: object
+      required: [id, body, created_at]
+      properties:
+        id:
+          type: string
+        body:
+          type: string
+          minLength: 1
+        created_at:
+          type: string
+          format: date-time
     TaskCreate:
       type: object
       required: [title]
@@ -261,6 +287,11 @@ components:
           items:
             $ref: "#/components/schemas/SubtaskInput"
           default: []
+        comments:
+          type: array
+          items:
+            $ref: "#/components/schemas/CommentInput"
+          default: []
     TaskUpdate:
       type: object
       properties:
@@ -285,6 +316,10 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/SubtaskInput"
+        comments:
+          type: array
+          items:
+            $ref: "#/components/schemas/CommentInput"
     Task:
       allOf:
         - $ref: "#/components/schemas/TaskCreate"
@@ -305,6 +340,10 @@ components:
               type: array
               items:
                 $ref: "#/components/schemas/Subtask"
+            comments:
+              type: array
+              items:
+                $ref: "#/components/schemas/Comment"
     Board:
       type: object
       required: [columns, tasks]

@@ -1,4 +1,4 @@
-from datetime import date
+from datetime import date, datetime
 from enum import StrEnum
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -69,6 +69,18 @@ class SubtaskInput(BaseModel):
     completed: bool = False
 
 
+class Comment(BaseModel):
+    id: str
+    body: str = Field(min_length=1)
+    created_at: datetime
+
+
+class CommentInput(BaseModel):
+    id: str | None = None
+    body: str = Field(min_length=1)
+    created_at: datetime | None = None
+
+
 class TaskBase(BaseModel):
     title: str = Field(min_length=1)
     notes: str = ""
@@ -80,6 +92,7 @@ class TaskBase(BaseModel):
 
 class TaskCreate(TaskBase):
     subtasks: list[SubtaskInput] = Field(default_factory=list)
+    comments: list[CommentInput] = Field(default_factory=list)
 
 
 class TaskUpdate(BaseModel):
@@ -91,6 +104,7 @@ class TaskUpdate(BaseModel):
     recurrence: Recurrence | None = None
     column: ColumnId | None = None
     subtasks: list[SubtaskInput] | None = None
+    comments: list[CommentInput] | None = None
 
 
 class Task(TaskBase):
@@ -100,6 +114,7 @@ class Task(TaskBase):
     completed_at: date | None = None
     archived: bool = False
     subtasks: list[Subtask] = Field(default_factory=list)
+    comments: list[Comment] = Field(default_factory=list)
 
 
 class TaskResponse(TaskBase):
@@ -110,6 +125,7 @@ class TaskResponse(TaskBase):
     completed_at: date | None = None
     archived: bool = False
     subtasks: list[Subtask] = Field(default_factory=list)
+    comments: list[Comment] = Field(default_factory=list)
 
 
 class BoardResponse(BaseModel):

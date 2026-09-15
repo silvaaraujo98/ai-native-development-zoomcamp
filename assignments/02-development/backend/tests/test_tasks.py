@@ -148,6 +148,42 @@ def test_create_task_accepts_subtasks(client, auth_headers):
     assert body["column"] == "todo"
 
 
+def test_create_task_accepts_comments_as_timeline(client, auth_headers):
+    response = client.post(
+        "/tasks",
+        headers=auth_headers,
+        json={
+            "title": "Discuss implementation",
+            "comments": [
+                {"body": "Added the UI timeline.", "created_at": "2026-01-01T10:00:00"},
+                {"body": "Started with the API contract.", "created_at": "2026-01-01T09:00:00"},
+            ],
+        },
+    )
+
+    assert response.status_code == 201
+    body = response.json()
+    assert [comment["body"] for comment in body["comments"]] == [
+        "Started with the API contract.",
+        "Added the UI timeline.",
+    ]
+    assert body["comments"][0]["created_at"] == "2026-01-01T09:00:00"
+
+
+def test_update_task_adds_comment_to_timeline(client, auth_headers):
+    response = client.patch(
+        "/tasks/task-1",
+        headers=auth_headers,
+        json={"comments": [{"body": "Clarified the acceptance criteria."}]},
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert len(body["comments"]) == 1
+    assert body["comments"][0]["body"] == "Clarified the acceptance criteria."
+    assert body["comments"][0]["created_at"]
+
+
 def test_update_task_with_some_incomplete_subtasks_stays_active(client, auth_headers):
     response = client.patch(
         "/tasks/task-1",

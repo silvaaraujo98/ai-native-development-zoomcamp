@@ -1,9 +1,9 @@
 import os
 from contextlib import contextmanager
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta, timezone
 from uuid import uuid4
 
-from sqlalchemy import Boolean, Date, ForeignKey, Integer, String, create_engine, select
+from sqlalchemy import Boolean, Date, DateTime, ForeignKey, Integer, String, create_engine, select
 from sqlalchemy.orm import DeclarativeBase, Mapped, Session, mapped_column, sessionmaker
 from sqlalchemy.pool import StaticPool
 
@@ -11,6 +11,8 @@ from app.models import (
     Category,
     Column,
     ColumnId,
+    Comment,
+    CommentInput,
     Priority,
     Recurrence,
     Subtask,
@@ -84,8 +86,21 @@ class SubtaskRow(Base):
     position: Mapped[int] = mapped_column(Integer, nullable=False)
 
 
+class CommentRow(Base):
+    __tablename__ = "comments"
+
+    id: Mapped[str] = mapped_column(String, primary_key=True)
+    task_id: Mapped[str] = mapped_column(ForeignKey("tasks.id"), nullable=False, index=True)
+    body: Mapped[str] = mapped_column(String, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, index=True)
+
+
 def _today() -> date:
     return date.today()
+
+
+def _now() -> datetime:
+    return datetime.now(timezone.utc).replace(tzinfo=None)
 
 
 def _database_url() -> str:
@@ -127,6 +142,7 @@ def _task_from_row(row: TaskRow) -> Task:
         completed_at=row.completed_at,
         archived=row.archived,
         subtasks=[],
+        comments=[],
     )
 
 
@@ -135,6 +151,14 @@ def _subtask_from_row(row: SubtaskRow) -> Subtask:
         id=row.id,
         title=row.title,
         completed=row.completed,
+    )
+
+
+def _comment_from_row(row: CommentRow) -> Comment:
+    return Comment(
+        id=row.id,
+        body=row.body,
+        created_at=row.created_at,
     )
 
 
@@ -280,12 +304,12 @@ class SqlAlchemyStore:
                 .where(TaskRow.user_id == user_id, TaskRow.archived.is_(False))
                 .order_by(TaskRow.id)
             ).all()
-            return [self._task_with_subtasks(db, row) for row in rows]
+            return [self._task_with_details(db, row) for row in rows]
 
     def get_task(self, user_id: str, task_id: str) -> Task | None:
         with self.session() as db:
             row = self._get_task_row(db, user_id, task_id)
-            return self._task_with_subtasks(db, row) if row else None
+            return self._task_with_details(db, row) if row else None
 
     def create_task(self, user_id: str, payload: TaskCreate) -> Task:
         with self.session() as db:
@@ -309,9 +333,10 @@ class SqlAlchemyStore:
             db.add(row)
             db.flush()
             self._replace_subtasks(db, row, payload.subtasks)
+            self._replace_comments(db, row, payload.comments)
             self._complete_task_if_all_subtasks_done(db, row)
             db.flush()
-            return self._task_with_subtasks(db, row)
+            return self._task_with_details(db, row)
 
     def update_task(self, user_id: str, task_id: str, payload: TaskUpdate) -> Task | None:
         with self.session() as db:
@@ -334,6 +359,9 @@ class SqlAlchemyStore:
                 if field_name == "subtasks":
                     self._replace_subtasks(db, row, value)
                     continue
+                if field_name == "comments":
+                    self._replace_comments(db, row, value)
+                    continue
                 if value is None:
                     setattr(row, field_name, None)
                 elif field_name in {"priority", "category", "recurrence", "column"}:
@@ -348,7 +376,7 @@ class SqlAlchemyStore:
 
             self._complete_task_if_all_subtasks_done(db, row)
             db.flush()
-            return self._task_with_subtasks(db, row)
+            return self._task_with_details(db, row)
 
     def delete_task(self, user_id: str, task_id: str) -> bool:
         with self.session() as db:
@@ -357,6 +385,8 @@ class SqlAlchemyStore:
                 return False
             for subtask in self._list_subtask_rows(db, row.id):
                 db.delete(subtask)
+            for comment in self._list_comment_rows(db, row.id):
+                db.delete(comment)
             db.delete(row)
             return True
 
@@ -378,7 +408,7 @@ class SqlAlchemyStore:
                 self._create_next_recurring_task(db, row)
 
             db.flush()
-            return self._task_with_subtasks(db, row)
+            return self._task_with_details(db, row)
 
     def _create_next_recurring_task(self, db: Session, completed_task: TaskRow) -> None:
         if completed_task.due_date is None:
@@ -417,7 +447,7 @@ class SqlAlchemyStore:
                 return None
             row.archived = True
             db.flush()
-            return self._task_with_subtasks(db, row)
+            return self._task_with_details(db, row)
 
     def auto_archive_done_tasks(self, user_id: str) -> None:
         cutoff = _today() - timedelta(days=7)
@@ -445,9 +475,10 @@ class SqlAlchemyStore:
             select(TaskRow).where(TaskRow.id == task_id, TaskRow.user_id == user_id)
         )
 
-    def _task_with_subtasks(self, db: Session, row: TaskRow) -> Task:
+    def _task_with_details(self, db: Session, row: TaskRow) -> Task:
         task = _task_from_row(row)
         task.subtasks = [_subtask_from_row(subtask) for subtask in self._list_subtask_rows(db, row.id)]
+        task.comments = [_comment_from_row(comment) for comment in self._list_comment_rows(db, row.id)]
         return task
 
     def _list_subtask_rows(self, db: Session, task_id: str) -> list[SubtaskRow]:
@@ -458,6 +489,38 @@ class SqlAlchemyStore:
                 .order_by(SubtaskRow.position, SubtaskRow.id)
             ).all()
         )
+
+    def _list_comment_rows(self, db: Session, task_id: str) -> list[CommentRow]:
+        return list(
+            db.scalars(
+                select(CommentRow)
+                .where(CommentRow.task_id == task_id)
+                .order_by(CommentRow.created_at, CommentRow.id)
+            ).all()
+        )
+
+    def _replace_comments(
+        self,
+        db: Session,
+        task: TaskRow,
+        comments: list[CommentInput | dict],
+    ) -> None:
+        for existing in self._list_comment_rows(db, task.id):
+            db.delete(existing)
+        db.flush()
+
+        for comment in comments:
+            comment_input = (
+                comment if isinstance(comment, CommentInput) else CommentInput.model_validate(comment)
+            )
+            db.add(
+                CommentRow(
+                    id=comment_input.id or f"comment-{uuid4()}",
+                    task_id=task.id,
+                    body=comment_input.body,
+                    created_at=comment_input.created_at or _now(),
+                )
+            )
 
     def _replace_subtasks(
         self,

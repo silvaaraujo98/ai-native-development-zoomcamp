@@ -377,7 +377,9 @@ h1 {
 }
 
 .subtask-editor,
-.subtask-card-list {
+.subtask-card-list,
+.comment-timeline,
+.comment-list {
   display: grid;
   gap: 0.65rem;
 }
@@ -392,6 +394,12 @@ h1 {
 
 .subtask-heading {
   justify-content: space-between;
+}
+
+.subtask-heading span {
+  color: #97a6b5;
+  font-size: 0.82rem;
+  font-weight: 900;
 }
 
 .subtask-heading h3 {
@@ -430,6 +438,54 @@ h1 {
 
 .subtask-card-row span {
   overflow-wrap: anywhere;
+}
+
+.comment-count {
+  color: #a9b6c4;
+  display: inline-block;
+  font-size: 0.78rem;
+  font-weight: 800;
+  margin-top: 0.65rem;
+}
+
+.comment-timeline {
+  border-top: 1px solid #26313f;
+  padding-top: 0.9rem;
+}
+
+.comment-item {
+  border-left: 2px solid #3fa894;
+  padding-left: 0.75rem;
+}
+
+.comment-item time {
+  color: #75d6c5;
+  display: block;
+  font-size: 0.74rem;
+  font-weight: 900;
+  margin-bottom: 0.25rem;
+}
+
+.comment-item p,
+.empty-timeline {
+  color: #c5d1dc;
+  font-size: 0.9rem;
+  line-height: 1.45;
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.comment-composer {
+  display: grid;
+  gap: 0.55rem;
+}
+
+.comment-composer textarea {
+  min-height: 4.5rem;
+}
+
+.comment-composer button {
+  justify-self: start;
 }
 
 @media (max-width: 900px) {

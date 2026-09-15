@@ -67,6 +67,7 @@ function toFrontendTask(task) {
     completedAt: task.completed_at,
     archived: task.archived,
     subtasks: task.subtasks ?? [],
+    comments: task.comments ?? [],
   };
 }
 
@@ -84,6 +85,11 @@ function toBackendTask(task) {
       title: subtask.title,
       completed: subtask.completed,
     })),
+    comments: (task.comments ?? []).map((comment) => ({
+      id: comment.id?.startsWith("draft-") ? undefined : comment.id,
+      body: comment.body,
+      created_at: comment.created_at,
+    })),
   };
 }
 
@@ -97,6 +103,7 @@ export function emptyTaskForm() {
     recurrence: "None",
     column: "todo",
     subtasks: [],
+    comments: [],
   };
 }
 
