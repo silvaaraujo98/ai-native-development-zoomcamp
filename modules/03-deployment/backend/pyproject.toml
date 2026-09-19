@@ -1,0 +1,16 @@
+[project]
+name = "system-design-interview-backend"
+version = "0.1.0"
+description = "FastAPI backend for the system design interview frontend"
+requires-python = ">=3.12"
+dependencies = [
+    "fastapi>=0.116.0",
+    "httpx>=0.28.0",
+    "pytest>=8.0.0",
+    "sqlalchemy>=2.0.0",
+    "uvicorn>=0.35.0",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]

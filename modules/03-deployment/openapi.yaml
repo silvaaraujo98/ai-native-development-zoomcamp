@@ -1,0 +1,800 @@
+openapi: 3.1.0
+info:
+  title: System Design Interview Platform API
+  version: 1.0.0
+  description: >
+    Backend contract inferred from modules/02-development/frontend/services.js.
+    Interviewer and owner workflows require bearer authentication. Candidate join
+    uses a guest link token and returns a short-lived participant bearer token for
+    subsequent session and canvas access.
+servers:
+  - url: https://api.example.com/v1
+security:
+  - bearerAuth: []
+tags:
+  - name: Sessions
+  - name: Links
+  - name: Participants
+  - name: Canvas
+  - name: Export
+  - name: Metadata
+paths:
+  /component-defaults:
+    get:
+      tags: [Metadata]
+      summary: List supported canvas component defaults
+      description: Public metadata used to render the component palette.
+      security: []
+      responses:
+        "200":
+          description: Component defaults by type.
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties:
+                  $ref: "#/components/schemas/ComponentDefault"
+
+  /sessions:
+    get:
+      tags: [Sessions]
+      summary: List sessions visible to the authenticated interviewer
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Session summaries.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/SessionSummary"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+    post:
+      tags: [Sessions]
+      summary: Create an interview session
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateSessionRequest"
+      responses:
+        "201":
+          description: Created session.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Session"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /sessions/{sessionId}:
+    parameters:
+      - $ref: "#/components/parameters/SessionId"
+    get:
+      tags: [Sessions]
+      summary: Get a session with canvas state
+      description: Requires interviewer bearer auth or a participant bearer token for this session.
+      security:
+        - bearerAuth: []
+        - participantAuth: []
+      responses:
+        "200":
+          description: Full session.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Session"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    patch:
+      tags: [Sessions]
+      summary: Update session metadata or controls
+      description: Used by the frontend to edit title, prompt, state, and candidate editing lock.
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateSessionRequest"
+      responses:
+        "200":
+          description: Updated session.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Session"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /sessions/{sessionId}/end:
+    parameters:
+      - $ref: "#/components/parameters/SessionId"
+    post:
+      tags: [Sessions]
+      summary: End an interview session
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Ended session.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Session"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /sessions/{sessionId}/duplicate:
+    parameters:
+      - $ref: "#/components/parameters/SessionId"
+    post:
+      tags: [Sessions]
+      summary: Duplicate a session as a draft template
+      security:
+        - bearerAuth: []
+      responses:
+        "201":
+          description: Duplicated draft session.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Session"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /sessions/{sessionId}/candidate-link:
+    parameters:
+      - $ref: "#/components/parameters/SessionId"
+    post:
+      tags: [Links]
+      summary: Create or rotate the candidate link
+      security:
+        - bearerAuth: []
+      responses:
+        "201":
+          description: Active candidate link.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CandidateLink"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    delete:
+      tags: [Links]
+      summary: Revoke the active candidate link
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Revoked candidate link, or null when no link existed.
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - $ref: "#/components/schemas/CandidateLink"
+                  - type: "null"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /join/{token}:
+    parameters:
+      - name: token
+        in: path
+        required: true
+        schema:
+          type: string
+    post:
+      tags: [Participants]
+      summary: Join a session using a candidate link token
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/JoinRequest"
+      responses:
+        "200":
+          description: Joined session and participant credentials.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/JoinResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "404":
+          description: Link is invalid, revoked, expired, archived, or no longer joinable.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "409":
+          description: Interview has ended or participant capacity has been reached.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /sessions/{sessionId}/canvas/elements:
+    parameters:
+      - $ref: "#/components/parameters/SessionId"
+    post:
+      tags: [Canvas]
+      summary: Add a canvas element
+      description: Requires interviewer auth or participant auth with edit permission.
+      security:
+        - bearerAuth: []
+        - participantAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AddElementRequest"
+      responses:
+        "201":
+          description: Created element.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CanvasElement"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+
+  /sessions/{sessionId}/canvas/elements/{elementId}:
+    parameters:
+      - $ref: "#/components/parameters/SessionId"
+      - $ref: "#/components/parameters/ElementId"
+    patch:
+      tags: [Canvas]
+      summary: Update a canvas element
+      security:
+        - bearerAuth: []
+        - participantAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateElementRequest"
+      responses:
+        "200":
+          description: Updated element.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CanvasElement"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    delete:
+      tags: [Canvas]
+      summary: Delete a canvas element
+      description: Also removes connections attached to the element.
+      security:
+        - bearerAuth: []
+        - participantAuth: []
+      responses:
+        "200":
+          description: Updated canvas after deletion.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Canvas"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /sessions/{sessionId}/canvas/connections:
+    parameters:
+      - $ref: "#/components/parameters/SessionId"
+    post:
+      tags: [Canvas]
+      summary: Add a canvas connection
+      security:
+        - bearerAuth: []
+        - participantAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AddConnectionRequest"
+      responses:
+        "201":
+          description: Created connection.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CanvasConnection"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+
+  /sessions/{sessionId}/canvas/strokes:
+    parameters:
+      - $ref: "#/components/parameters/SessionId"
+    post:
+      tags: [Canvas]
+      summary: Add a freehand stroke
+      security:
+        - bearerAuth: []
+        - participantAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AddStrokeRequest"
+      responses:
+        "201":
+          description: Created stroke.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CanvasStroke"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+
+  /sessions/{sessionId}/export.json:
+    parameters:
+      - $ref: "#/components/parameters/SessionId"
+    get:
+      tags: [Export]
+      summary: Export a session as JSON
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Full session JSON export.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Session"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: Authenticated interviewer, owner, or observer token.
+    participantAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: Short-lived guest participant token returned by POST /join/{token}.
+  parameters:
+    SessionId:
+      name: sessionId
+      in: path
+      required: true
+      schema:
+        type: string
+      example: session-demo
+    ElementId:
+      name: elementId
+      in: path
+      required: true
+      schema:
+        type: string
+      example: el-1
+  responses:
+    BadRequest:
+      description: Invalid request body.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+    Unauthorized:
+      description: Missing or invalid authentication.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+    Forbidden:
+      description: Authenticated principal is not allowed to perform this action.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+    NotFound:
+      description: Resource was not found.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+  schemas:
+    Error:
+      type: object
+      required: [code, message]
+      properties:
+        code:
+          type: string
+          examples: [not_found]
+        message:
+          type: string
+          examples: [Session not found]
+
+    ComponentDefault:
+      type: object
+      required: [label, w, h, color]
+      properties:
+        label:
+          type: string
+        w:
+          type: integer
+          minimum: 1
+        h:
+          type: integer
+          minimum: 1
+        color:
+          type: string
+          pattern: "^#[0-9a-fA-F]{6}$"
+
+    SessionState:
+      type: string
+      enum: [draft, live, ended, archived]
+
+    ParticipantRole:
+      type: string
+      enum: [Owner, Interviewer, Candidate, Observer]
+
+    CanvasElementType:
+      type: string
+      enum: [service, database, cache, queue, gateway, worker, client, vector, llm, note]
+
+    CandidateLink:
+      type: object
+      required: [token, revokedAt, expiresAt, maxUses]
+      properties:
+        token:
+          type: string
+          description: Bearer token embedded in the candidate join URL. Store only a hash server-side.
+        revokedAt:
+          type: [string, "null"]
+          format: date-time
+        expiresAt:
+          type: [string, "null"]
+          format: date-time
+        maxUses:
+          type: [integer, "null"]
+          minimum: 1
+
+    Participant:
+      type: object
+      required: [id, name, role, color, active]
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        role:
+          $ref: "#/components/schemas/ParticipantRole"
+        color:
+          type: string
+          pattern: "^#[0-9a-fA-F]{6}$"
+        active:
+          type: boolean
+
+    CanvasElement:
+      type: object
+      required: [id, type, x, y, w, h, label, color, description]
+      properties:
+        id:
+          type: string
+        type:
+          $ref: "#/components/schemas/CanvasElementType"
+        x:
+          type: number
+        y:
+          type: number
+        w:
+          type: number
+          minimum: 1
+        h:
+          type: number
+          minimum: 1
+        label:
+          type: string
+        color:
+          type: string
+          pattern: "^#[0-9a-fA-F]{6}$"
+        description:
+          type: string
+
+    CanvasConnection:
+      type: object
+      required: [id, from, to, label, directed, style]
+      properties:
+        id:
+          type: string
+        from:
+          type: string
+          description: Source element ID.
+        to:
+          type: string
+          description: Target element ID.
+        label:
+          type: string
+        directed:
+          type: boolean
+        style:
+          type: string
+          enum: [solid, dashed]
+
+    Point:
+      type: array
+      prefixItems:
+        - type: number
+        - type: number
+      minItems: 2
+      maxItems: 2
+
+    CanvasStroke:
+      type: object
+      required: [id, color, width, points]
+      properties:
+        id:
+          type: string
+        color:
+          type: string
+          pattern: "^#[0-9a-fA-F]{6}$"
+        width:
+          type: number
+          minimum: 1
+        points:
+          type: array
+          minItems: 2
+          items:
+            $ref: "#/components/schemas/Point"
+
+    Canvas:
+      type: object
+      required: [elements, connections, strokes]
+      properties:
+        elements:
+          type: array
+          items:
+            $ref: "#/components/schemas/CanvasElement"
+        connections:
+          type: array
+          items:
+            $ref: "#/components/schemas/CanvasConnection"
+        strokes:
+          type: array
+          items:
+            $ref: "#/components/schemas/CanvasStroke"
+
+    SessionSummary:
+      type: object
+      required:
+        - id
+        - title
+        - prompt
+        - state
+        - candidateEditingEnabled
+        - createdAt
+        - updatedAt
+        - link
+        - participants
+        - elementCount
+        - strokeCount
+      properties:
+        id:
+          type: string
+        title:
+          type: string
+        prompt:
+          type: string
+        state:
+          $ref: "#/components/schemas/SessionState"
+        candidateEditingEnabled:
+          type: boolean
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+        startedAt:
+          type: [string, "null"]
+          format: date-time
+        endedAt:
+          type: [string, "null"]
+          format: date-time
+        link:
+          oneOf:
+            - $ref: "#/components/schemas/CandidateLink"
+            - type: "null"
+        participants:
+          type: array
+          items:
+            $ref: "#/components/schemas/Participant"
+        elementCount:
+          type: integer
+          minimum: 0
+        strokeCount:
+          type: integer
+          minimum: 0
+
+    Session:
+      allOf:
+        - $ref: "#/components/schemas/SessionSummary"
+        - type: object
+          required: [canvas]
+          properties:
+            canvas:
+              $ref: "#/components/schemas/Canvas"
+
+    CreateSessionRequest:
+      type: object
+      required: [title, prompt]
+      properties:
+        title:
+          type: string
+          minLength: 1
+        prompt:
+          type: string
+          minLength: 1
+
+    UpdateSessionRequest:
+      type: object
+      additionalProperties: false
+      properties:
+        title:
+          type: string
+          minLength: 1
+        prompt:
+          type: string
+        state:
+          $ref: "#/components/schemas/SessionState"
+        candidateEditingEnabled:
+          type: boolean
+        endedAt:
+          type: [string, "null"]
+          format: date-time
+
+    JoinRequest:
+      type: object
+      required: [displayName]
+      properties:
+        displayName:
+          type: string
+          minLength: 1
+
+    JoinResponse:
+      type: object
+      required: [session, participant, participantToken]
+      properties:
+        session:
+          $ref: "#/components/schemas/Session"
+        participant:
+          $ref: "#/components/schemas/Participant"
+        participantToken:
+          type: string
+          description: Short-lived bearer token for participantAuth.
+
+    AddElementRequest:
+      type: object
+      required: [type, x, y]
+      properties:
+        type:
+          $ref: "#/components/schemas/CanvasElementType"
+        x:
+          type: number
+        y:
+          type: number
+
+    UpdateElementRequest:
+      type: object
+      additionalProperties: false
+      properties:
+        type:
+          $ref: "#/components/schemas/CanvasElementType"
+        x:
+          type: number
+        y:
+          type: number
+        w:
+          type: number
+          minimum: 1
+        h:
+          type: number
+          minimum: 1
+        label:
+          type: string
+        color:
+          type: string
+          pattern: "^#[0-9a-fA-F]{6}$"
+        description:
+          type: string
+
+    AddConnectionRequest:
+      type: object
+      required: [from, to]
+      properties:
+        from:
+          type: string
+        to:
+          type: string
+        label:
+          type: string
+          default: ""
+
+    AddStrokeRequest:
+      type: object
+      required: [color, width, points]
+      properties:
+        color:
+          type: string
+          pattern: "^#[0-9a-fA-F]{6}$"
+        width:
+          type: number
+          minimum: 1
+        points:
+          type: array
+          minItems: 2
+          items:
+            $ref: "#/components/schemas/Point"
