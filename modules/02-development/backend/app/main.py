@@ -8,6 +8,11 @@ from .routers import auth, canvas, export, metadata, participants, sessions
 
 def create_app() -> FastAPI:
     app = FastAPI(title="System Design Interview Platform API", version="1.0.0")
+
+    @app.get("/")
+    async def root() -> dict[str, str]:
+        return {"message": "System Design Interview Platform API"}
+
     app.add_middleware(
         CORSMiddleware,
         allow_origins=["*"],

@@ -13,6 +13,12 @@ def reset_store() -> None:
     store.reset()
 
 
+def test_root_route() -> None:
+    response = client.get("/")
+    assert response.status_code == 200
+    assert response.json() == {"message": "System Design Interview Platform API"}
+
+
 def auth_headers() -> dict[str, str]:
     response = client.post(
         "/v1/auth/login",
