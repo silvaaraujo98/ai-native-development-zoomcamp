@@ -1,9 +1,11 @@
-# Agent Relay (SQLite starter)
+# Agent Relay
 
-Agent Relay is a small FastAPI service for registering agents, delivering one
-task at a time, and recording results. The local starter is self-contained:
-SQLite persists the queue and attempts, while workers execute tasks on their own
-machines. The included worker deterministically returns `input.upper()`.
+Agent Relay is a FastAPI service for registering agents, delivering one task at
+a time, and recording results. PostgreSQL persists the queue and attempts in
+the Compose and Kubernetes deployments, while workers execute tasks on their
+own machines. The included worker deterministically returns `input.upper()`.
+
+The protocol and lifecycle are documented in [docs/SPEC.md](docs/SPEC.md).
 
 ## Run it
 

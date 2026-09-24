@@ -1,7 +1,7 @@
 [project]
 name = "agent-relay"
 version = "0.1.0"
-description = "Add your description here"
+description = "HTTP relay for registering agents, delivering tasks, and recording results"
 readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
