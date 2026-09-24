@@ -1,0 +1,114 @@
+name: Agent Relay CI
+
+on:
+  push:
+  pull_request:
+
+env:
+  PROJECT_DIR: assignments/03-deployment
+  IMAGE: agent-relay
+  KIND_CLUSTER: agent-relay
+
+jobs:
+  test-build-deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+
+      - name: Install dependencies
+        working-directory: ${{ env.PROJECT_DIR }}
+        run: uv sync --frozen
+
+      - name: Start PostgreSQL for integration tests
+        run: |
+          docker rm -f agent-relay-ci-postgres >/dev/null 2>&1 || true
+          docker run -d --name agent-relay-ci-postgres \
+            -e POSTGRES_DB=agent_relay \
+            -e POSTGRES_USER=agent_relay \
+            -e POSTGRES_PASSWORD=agent_relay \
+            -p 15432:5432 postgres:16-alpine
+          for i in {1..30}; do
+            docker exec agent-relay-ci-postgres pg_isready -U agent_relay -d agent_relay && break
+            sleep 2
+          done
+
+      - name: Run starter tests
+        working-directory: ${{ env.PROJECT_DIR }}
+        env:
+          RELAY_DATABASE_URL: sqlite:///./ci-test.db
+        run: uv run pytest -q test_agent_relay.py
+
+      - name: Start API for PostgreSQL integration test
+        working-directory: ${{ env.PROJECT_DIR }}
+        env:
+          RELAY_DATABASE_URL: postgresql+psycopg://agent_relay:agent_relay@127.0.0.1:15432/agent_relay
+        run: |
+          uv run uvicorn main:app --host 127.0.0.1 --port 18000 > /tmp/agent-relay-api.log 2>&1 &
+          echo $! > /tmp/agent-relay-api.pid
+          for i in {1..30}; do curl --fail http://127.0.0.1:18000/ready && break; sleep 2; done
+
+      - name: Run PostgreSQL integration test
+        working-directory: ${{ env.PROJECT_DIR }}
+        env:
+          RELAY_BASE_URL: http://127.0.0.1:18000
+        run: uv run pytest -q test_integration_real_api.py
+
+      # The image build and every deployment step are after the test gate.
+      - name: Set unique image tag
+        id: image
+        run: echo "tag=${GITHUB_SHA}-${GITHUB_RUN_NUMBER}-$(date -u +%Y%m%d%H%M%S)-${RANDOM}" >> "$GITHUB_OUTPUT"
+
+      - name: Build Docker image
+        working-directory: ${{ env.PROJECT_DIR }}
+        run: docker build -t "$IMAGE:${{ steps.image.outputs.tag }}" .
+
+      - name: Configure Docker and kind
+        run: |
+          docker info
+          if ! command -v kind >/dev/null 2>&1; then
+            curl -Lo /tmp/kind https://kind.sigs.k8s.io/dl/v0.33.0/kind-linux-amd64
+            install -m 0755 /tmp/kind /usr/local/bin/kind
+          fi
+          if ! command -v kubectl >/dev/null 2>&1; then
+            curl -Lo /tmp/kubectl https://dl.k8s.io/release/v1.31.0/bin/linux/amd64/kubectl
+            install -m 0755 /tmp/kubectl /usr/local/bin/kubectl
+          fi
+          kind version
+          kubectl version --client
+          if ! kind get clusters | grep -qx "$KIND_CLUSTER"; then
+            kind create cluster --name "$KIND_CLUSTER" --wait 120s
+          fi
+          kind export kubeconfig --name "$KIND_CLUSTER" --kubeconfig /tmp/agent-relay-kubeconfig
+          echo "KUBECONFIG=/tmp/agent-relay-kubeconfig" >> "$GITHUB_ENV"
+
+      - name: Load image into kind
+        run: kind load docker-image "$IMAGE:${{ steps.image.outputs.tag }}" --name "$KIND_CLUSTER"
+
+      - name: Deploy to kind
+        working-directory: ${{ env.PROJECT_DIR }}
+        run: |
+          kubectl apply -f k8s/postgres.yaml -f k8s/agent-relay.yaml
+          kubectl set image deployment/agent-relay agent-relay="$IMAGE:${{ steps.image.outputs.tag }}"
+          kubectl rollout status deployment/postgres --timeout=180s
+          kubectl rollout status deployment/agent-relay --timeout=180s
+          kubectl wait --for=condition=ready pod -l app=postgres --timeout=180s
+          kubectl wait --for=condition=ready pod -l app=agent-relay --timeout=180s
+
+      - name: Verify deployed dashboard heading
+        run: |
+          kubectl port-forward service/agent-relay 18080:8000 > /tmp/agent-relay-port-forward.log 2>&1 &
+          PF_PID=$!
+          trap 'kill "$PF_PID"' EXIT
+          for i in {1..30}; do
+            HTML=$(curl --silent --fail http://127.0.0.1:18080/ || true)
+            echo "$HTML" | grep -Fq '<h1>Agent Relay v2</h1>' && exit 0
+            sleep 2
+          done
+          echo 'Deployed dashboard did not contain Agent Relay v2'
+          exit 1
